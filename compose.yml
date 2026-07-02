@@ -1,0 +1,55 @@
+# =============================================================
+# Orchestration légère du service web Catal-Log (compétence C13).
+#
+# Deux services coordonnés sur un même réseau :
+#   - web      : le site statique servi par Nginx (l'artefact du projet)
+#   - monitor  : une sonde qui vérifie périodiquement la santé de web
+#
+# Usage normal   : docker compose up -d
+# Simulation scaling (voir docs/04) :
+#   docker compose -f compose.scale.yml up --build --scale web=3
+# =============================================================
+
+services:
+  web:
+    build:
+      context: .
+      args:
+        VERSION: "1.0.0-local"
+        COMMIT: "local"
+        BUILD_DATE: "local"
+        ENVIRONMENT: "recette"
+    image: ghcr.io/narthuls/catal-log-site:local
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  monitor:
+    image: alpine:3.20
+    depends_on:
+      web:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        echo "[monitor] démarrage de la surveillance de web:8080";
+        while true; do
+          if wget -q -O- http://web:8080/healthz >/dev/null 2>&1; then
+            echo "[monitor] $(date -Iseconds) web OK";
+          else
+            echo "[monitor] $(date -Iseconds) web INJOIGNABLE";
+          fi;
+          sleep 15;
+        done
+    restart: unless-stopped
+
+networks:
+  default:
+    name: catal-log-net
