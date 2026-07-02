@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Catal-Log — Chaîne de livraison logicielle</title>
+  <meta name="description" content="Site statique de démonstration servi par Nginx. Projet EC06 — pipeline CI/CD (build, test, publication GHCR, promotion)." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237b5a9e'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle' fill='%231c1626' font-family='sans-serif' font-weight='700'%3EC%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <div class="wrap brand">
+      <div class="logo" aria-hidden="true">C</div>
+      <div class="name">Catal<span>-</span>Log</div>
+      <div class="tagline">Livraison logicielle · EC06</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap hero">
+      <span class="eyebrow">Intégration &amp; déploiement continus</span>
+      <h1>La même image, du <em>commit</em> jusqu'à la production.</h1>
+      <p class="lead">
+        Ce site statique est l'artefact que la chaîne construit, teste, publie et promeut.
+        Il n'est jamais reconstruit entre la recette et la production : c'est exactement
+        le même conteneur Docker, identifié par son tag et son digest.
+      </p>
+
+      <section class="build-card" aria-label="Identité du build déployé">
+        <div class="bar">
+          <span class="dot live" aria-hidden="true"></span>
+          <span id="status-line">site/version.json · chargement…</span>
+        </div>
+        <div class="build-grid">
+          <div class="cell">
+            <div class="k">Version</div>
+            <div class="v" id="v-version">—</div>
+          </div>
+          <div class="cell">
+            <div class="k">Environnement</div>
+            <div class="v"><span class="badge recette" id="v-env">—</span></div>
+          </div>
+          <div class="cell">
+            <div class="k">Commit</div>
+            <div class="v" id="v-commit">—</div>
+          </div>
+          <div class="cell">
+            <div class="k">Construit le</div>
+            <div class="v" id="v-date">—</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="pipeline">
+      <div class="wrap">
+        <h2>Le trajet de l'artefact</h2>
+        <div class="steps">
+          <article class="step">
+            <div class="n">01 · CI</div>
+            <h3>Build &amp; test</h3>
+            <p>À chaque push, l'image Nginx est construite puis testée via une requête HTTP dans GitHub Actions.</p>
+          </article>
+          <article class="step">
+            <div class="n">02 · Publish</div>
+            <h3>Publication GHCR</h3>
+            <p>L'image validée est poussée sur GitHub Container Registry avec un tag et un digest.</p>
+          </article>
+          <article class="step">
+            <div class="n">03 · Recette</div>
+            <h3>Validation</h3>
+            <p>L'artefact est déployé dans l'environnement de recette simulé pour contrôle.</p>
+          </article>
+          <article class="step">
+            <div class="n">04 · Promote</div>
+            <h3>Promotion</h3>
+            <p>Le même digest est promu vers la production simulée, sans aucun rebuild.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site">
+    <div class="wrap">
+      Catal-Log · Site statique de démonstration servi par Nginx.<br />
+      Projet ASRC — EC06 (RNCP39611BC02). Preuves &amp; documentation dans le dépôt GitHub.
+    </div>
+  </footer>
+
+  <script>
+    fetch('/version.json', { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        document.getElementById('v-version').textContent = d.version || '—';
+        document.getElementById('v-commit').textContent = (d.commit || '—').slice(0, 12);
+        document.getElementById('v-date').textContent = d.build_date || '—';
+        var env = (d.environment || 'recette').toLowerCase();
+        var badge = document.getElementById('v-env');
+        badge.textContent = env;
+        badge.className = 'badge ' + (env.indexOf('prod') === 0 ? 'production' : 'recette');
+        document.getElementById('status-line').textContent =
+          'site/version.json · ' + (d.project || 'EC06') + ' · OK';
+      })
+      .catch(function (e) {
+        document.getElementById('status-line').textContent =
+          'version.json indisponible (' + e.message + ')';
+      });
+  </script>
+</body>
+</html>
