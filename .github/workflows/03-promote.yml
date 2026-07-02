@@ -1,0 +1,79 @@
+name: 03 - Promote (recette -> production simulée)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Tag de l'image déjà publiée à promouvoir (ex : latest, 1.0.0, sha-xxxx)"
+        required: true
+        default: "latest"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/catal-log-site
+
+jobs:
+  valider-recette:
+    runs-on: ubuntu-latest
+    environment: recette
+    outputs:
+      digest: ${{ steps.resolve.outputs.digest }}
+      image_lc: ${{ steps.resolve.outputs.image_lc }}
+    steps:
+      - name: Se connecter à GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Résoudre l'image et récupérer son digest
+        id: resolve
+        run: |
+          image_lc=$(echo "${IMAGE}" | tr '[:upper:]' '[:lower:]')
+          ref="${image_lc}:${{ inputs.image_tag }}"
+          docker pull "$ref"
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$ref")
+          echo "image_lc=$image_lc" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest"     >> "$GITHUB_OUTPUT"
+          echo "Artefact résolu : $digest"
+
+      - name: Valider l'artefact existant (test HTTP)
+        run: |
+          docker run -d --name recette -p 8080:8080 \
+            "${{ steps.resolve.outputs.image_lc }}:${{ inputs.image_tag }}"
+          sleep 5
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          echo "recette GET / -> $code"; test "$code" = "200"
+          curl -s http://localhost:8080/version.json | jq -e '.project == "EC06"'
+          docker rm -f recette
+
+  promouvoir-production:
+    needs: valider-recette
+    runs-on: ubuntu-latest
+    environment: production-simulee
+    steps:
+      - name: Se connecter à GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promouvoir SANS reconstruction (re-tag du même digest)
+        env:
+          IMAGE_LC: ${{ needs.valider-recette.outputs.image_lc }}
+          DIGEST:   ${{ needs.valider-recette.outputs.digest }}
+        run: |
+          echo "Promotion de l'artefact déjà construit : $DIGEST"
+          docker buildx imagetools create -t "${IMAGE_LC}:production"            "$DIGEST"
+          docker buildx imagetools create -t "${IMAGE_LC}:prod-${GITHUB_SHA::12}" "$DIGEST"
+          {
+            echo "### Promotion réussie (aucun rebuild)"
+            echo ""
+            echo "- **Artefact promu (digest inchangé)** : \`$DIGEST\`"
+            echo "- **Nouveaux tags production** : \`production\`, \`prod-${GITHUB_SHA::12}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
