@@ -1,0 +1,78 @@
+name: 01 - CI (build & test)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Analyser le Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+        continue-on-error: true   # test complémentaire, non bloquant
+
+      - name: Préparer les métadonnées du build
+        id: meta
+        run: |
+          echo "version=$(jq -r .version site/version.json)" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Préparer Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construire l'image (chargée localement)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: catal-log-site:ci
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+            ENVIRONMENT=ci
+
+      - name: Démarrer le conteneur et attendre l'état healthy
+        run: |
+          docker run -d --name catal-ci -p 8080:8080 catal-log-site:ci
+          for i in $(seq 1 20); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' catal-ci 2>/dev/null || echo starting)
+            echo "healthcheck ($i) : $status"
+            [ "$status" = "healthy" ] && break
+            sleep 2
+          done
+
+      - name: "Test HTTP — page d'accueil répond 200"
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          echo "GET / -> $code"
+          test "$code" = "200"
+
+      - name: "Test HTTP — le contenu attendu est présent"
+        run: |
+          curl -s http://localhost:8080/ | grep -q "Catal-Log"
+
+      - name: "Test HTTP — version.json est un JSON valide et cohérent"
+        run: |
+          curl -s http://localhost:8080/version.json | jq -e '.project == "EC06"'
+
+      - name: "Test HTTP — la sonde /healthz renvoie ok"
+        run: |
+          test "$(curl -s http://localhost:8080/healthz)" = "ok"
+
+      - name: Journaux du conteneur puis nettoyage
+        if: always()
+        run: |
+          docker logs catal-ci || true
+          docker rm -f catal-ci || true
