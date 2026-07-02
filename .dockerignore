@@ -1,0 +1,10 @@
+# Ne pas embarquer ces éléments dans le contexte de build Docker
+.git
+.github
+docs
+README.md
+compose.yml
+compose.scale.yml
+*.md
+.gitignore
+.DS_Store
