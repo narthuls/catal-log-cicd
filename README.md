@@ -5,7 +5,7 @@ servi par Nginx. Le projet couvre la **construction**, le **test**, la **publica
 et la **promotion** d'une image Docker, via **GitHub Actions** et **GitHub Container
 Registry (GHCR)**, avec simulation des environnements *recette* et *production*.
 
-> Formation ASRC — RNCP39611BC02 · Évaluation **EC06** · Auteur : **Noah**
+> Formation ASRC · Évaluation **EC06** · Auteur : 09
 
 ## Principe
 
